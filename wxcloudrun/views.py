@@ -1,66 +1,62 @@
-from datetime import datetime
-from flask import render_template, request
-from run import app
-from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter, update_counterbyid
-from wxcloudrun.model import Counters
-from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
+from flask import Flask, request, jsonify
+import re
+import requests
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
+app = Flask(__name__)
 
-@app.route('/')
-def index():
-    """
-    :return: 返回index页面
-    """
-    return render_template('index.html')
+# 初始化限流器
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["2 per minute"]
+)
 
+def show_link(link):
+    ua_phone = 'Mozilla/5.0 (Linux; Android 6.0; ' \
+             'Nexus 5 Build/MRA58N) AppleWebKit/537.36 (' \
+             'KHTML, like Gecko) Chrome/80.0.3987.116 Mobile Safari/537.36'
 
-@app.route('/api/count', methods=['POST'])
-def count():
-    """
-    :return:计数结果/清除结果
-    """
+    headers = {
+            'User-Agent': ua_phone
+        }
+    try:
+        res = requests.get(link,headers=headers).text
+        pattern = r"https:\\u002F\\u002Faweme\.snssdk\.com\\u002Faweme\\u002Fv1\\u002Fplaywm\\u002F\?video_id=[a-zA-Z0-9]+&ratio=[0-9a-z]+&line=[0-9]+"
+        match = re.search(pattern, res)
 
-    # 获取请求体参数
-    params = request.get_json()
-
-    # 检查action参数
-    if 'action' not in params:
-        return make_err_response('缺少action参数')
-
-    # 按照不同的action的值，进行不同的操作
-    action = params['action']
-
-    # 执行自增操作
-    if action == 'inc':
-        counter = query_counterbyid(1)
-        if counter is None:
-            counter = Counters()
-            counter.id = 1
-            counter.count = 1
-            counter.created_at = datetime.now()
-            counter.updated_at = datetime.now()
-            insert_counter(counter)
+        # 如果找到匹配的URL，将\u002F替换为空字符"/"
+        if match:
+            url = match.group()
+            # 替换\u002F为 /
+            clean_url = re.sub(r"\\u002F", "/", url).replace("playwm","play")
+            return clean_url
         else:
-            counter.id = 1
-            counter.count += 1
-            counter.updated_at = datetime.now()
-            update_counterbyid(counter)
-        return make_succ_response(counter.count)
+            return ""
+    except:
+        return ""
 
-    # 执行清0操作
-    elif action == 'clear':
-        delete_counterbyid(1)
-        return make_succ_empty_response()
-
-    # action参数错误
-    else:
-        return make_err_response('action参数错误')
+@app.errorhandler(429)
+def handle_rate_limit_exceeded(e):
+    return jsonify({"error": "请求频率超过限制",'code':400}), 200
 
 
-@app.route('/api/count', methods=['GET'])
-def get_count():
-    """
-    :return: 计数的值
-    """
-    counter = Counters.query.filter(Counters.id == 1).first()
-    return make_succ_response(0) if counter is None else make_succ_response(counter.count)
+def haldle_url(string):
+    pattern = r'https://v.douyin.com/.*?/'
+    match = re.search(pattern, string)
+    if match:
+        url = match.group()
+        return url
+    return 0
+
+@app.route('/get_video_url', methods=['POST'])
+@limiter.limit("2 per minute")  # 限流配置
+def get_video_url():
+    data = request.json
+    shared_url = data.get("shared_url")
+    handle_link = haldle_url(shared_url)
+    if not handle_link:
+        return jsonify({"error": "分享链接非法", 'code': 400}), 200
+    link = show_link(handle_link.strip())
+    return jsonify({"video_url": link})
