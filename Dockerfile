@@ -22,6 +22,8 @@ COPY . /app
 # 设定当前的工作目录
 WORKDIR /app
 
+RUN mkdir /run/nginx
+
 RUN rm -rf /etc/nginx/conf.d/default.conf
 COPY default.conf /etc/nginx/conf.d/
 
