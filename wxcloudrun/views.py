@@ -1,3 +1,5 @@
+import time
+
 from flask import Flask, request, jsonify
 import re
 from run import app
@@ -11,7 +13,6 @@ limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["2 per minute"]
 )
-
 def show_link(link):
     ua_phone = 'Mozilla/5.0 (Linux; Android 6.0; ' \
              'Nexus 5 Build/MRA58N) AppleWebKit/537.36 (' \
@@ -49,6 +50,22 @@ def haldle_url(string):
         return url
     return 0
 
+def get_redir_link(link):
+    s = requests.session()
+    ua_phone = 'Mozilla/5.0 (Linux; Android 6.0; ' \
+               'Nexus 5 Build/MRA58N) AppleWebKit/537.36 (' \
+               'KHTML, like Gecko) Chrome/80.0.3987.116 Mobile Safari/537.36'
+
+    headers = {
+        'User-Agent': ua_phone
+    }
+    res = s.get(link,headers=headers, allow_redirects=False)
+    time.sleep(2)
+    if res.status_code == 302 or res.status_code == 301:
+        redir_link = res.headers['Location']
+        return redir_link
+
+
 @app.route('/get_video_url', methods=['POST'])
 @limiter.limit("2 per minute")  # 限流配置
 def get_video_url():
@@ -58,4 +75,6 @@ def get_video_url():
     if not handle_link:
         return jsonify({"error": "分享链接非法", 'code': 400}), 200
     link = show_link(handle_link.strip())
-    return jsonify({"video_url": link})
+    redir_link = get_redir_link(link)
+    return jsonify({"video_url": redir_link})
+
