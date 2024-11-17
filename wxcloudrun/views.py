@@ -1,10 +1,9 @@
 from flask import Flask, request, jsonify
 import re
+from run import app
 import requests
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-
-app = Flask(__name__)
 
 # 初始化限流器
 limiter = Limiter(
